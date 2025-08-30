@@ -10,8 +10,6 @@ from googleapiclient.discovery import build
 from datetime import timezone
 
 
-TAKS_KEYWORDS = ["Exercícios", "Entrega", "Oficina", "Tarefa", "Tarefas", "Atividade"]
-IGNORE_KEYWORDS = ["Aula", "Presença"]
 
 # ================= CONFIGURAÇÃO =================
 SCOPES = [
@@ -20,6 +18,14 @@ SCOPES = [
 ]
 ICS_URL = "url"  # caminho local ou URL real
 TIMEZONE = "America/Sao_Paulo"
+TAKS_KEYWORDS = ["Exercícios", "Entrega", "Oficina", "Tarefa", "Tarefas", "Atividade"]
+IGNORE_KEYWORDS = ["Aula", "Presença"]
+CREDENTIALS_PATH = 'path'
+
+
+
+
+# ================= FUNÇÕES =================
 
 def should_create_task(summary: str) -> bool:
     summary_upper = summary.upper()
@@ -33,6 +39,7 @@ def should_create_task(summary: str) -> bool:
 
 
 def uid_to_id(uid):
+    """Gera ID seguro para Google Calendar usando hash."""
     return hashlib.sha256(uid.encode('utf-8')).hexdigest()[:32]
 
 def authenticate():
@@ -43,7 +50,7 @@ def authenticate():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(Credentials, SCOPES)
             creds = flow.run_local_server(port=0)
             with open('token.json', 'w') as token:
                 token.write(creds.to_json())
@@ -84,17 +91,30 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
             continue
 
         if should_create_task(summary):
-            task_body = {
-                'title': summary.replace('[TAREFA] ', '')[:250],  # limita 250 chars
-                'notes': description.replace("\\n", "\n").replace("\\,", ","),
-                'due': dtend.astimezone(timezone.utc).isoformat(timespec='seconds')
-            }
-            try:
+            task_title = summary.replace('[TAREFA] ', '')[:250]
+        task_body = {
+            'title': task_title,
+            'notes': description.replace("\\n", "\n").replace("\\,", ","),
+            'due': dtend.astimezone(timezone.utc).isoformat(timespec='seconds')
+        }
+
+        # Procurar tarefa existente
+        try:
+            tasks_result = tasks_service.tasks().list(tasklist=tasklist_id).execute()
+            tasks = tasks_result.get("items", [])
+            existing_task = next((t for t in tasks if t.get("title") == task_title), None)
+
+            if existing_task:
+                tasks_service.tasks().update(tasklist=tasklist_id, task=existing_task['id'], body=task_body).execute()
+                print(f"Tarefa atualizada: {task_title}")
+            else:
                 tasks_service.tasks().insert(tasklist=tasklist_id, body=task_body).execute()
-                print(f"Tarefa criada: {summary}")
-            except Exception as e:
-                print(f"Erro ao criar tarefa {summary}: {e}")
+                print(f"Tarefa criada: {task_title}")
+        except Exception as e:
+            print(f"Erro ao processar tarefa {task_title}: {e}")
+
         else:
+            # Criar/Atualizar evento no Calendar
             safe_id = uid_to_id(uid)
             event_body = {
                 "id": safe_id,
@@ -114,6 +134,7 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
                 print(f"Erro ao criar/atualizar evento {summary}: {e}")
 
 def clear_all(calendar_service, tasks_service, calendar_id="primary", tasklist_id="@default"):
+    # 1. Apagar eventos do Calendar
     try:
         now = datetime.utcnow().isoformat() + "Z"  # 'Z' = UTC
         events_result = calendar_service.events().list(
@@ -134,6 +155,7 @@ def clear_all(calendar_service, tasks_service, calendar_id="primary", tasklist_i
     except Exception as e:
         print("Erro ao listar/apagar eventos:", e)
 
+    # 2. Apagar tarefas do Google Tasks
     try:
         tasks_result = tasks_service.tasks().list(tasklist=tasklist_id).execute()
         tasks = tasks_result.get("items", [])
@@ -154,6 +176,7 @@ def clear_all(calendar_service, tasks_service, calendar_id="primary", tasklist_i
 calendar_service, tasks_service = authenticate()
 ical_text = load_ics(ICS_URL)
 
+# Processar eventos e tarefas
 process_events(calendar_service, tasks_service, ical_text, replace_existing=True)
 
 # --- Para apagar todos os eventos e tarefas importados ---
