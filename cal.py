@@ -18,9 +18,9 @@ SCOPES = [
 ]
 ICS_URL = "url"  # caminho local ou URL real
 TIMEZONE = "America/Sao_Paulo"
-TAKS_KEYWORDS = ["Exercícios", "Entrega", "Oficina", "Tarefa", "Tarefas", "Atividade"]
-IGNORE_KEYWORDS = ["Aula", "Presença"]
-CREDENTIALS_PATH = 'path'
+TAKS_KEYWORDS = ["Exercícios", "Exercício", "Entrega", "Oficina", "Tarefa", "Tarefas", "Atividade"]
+IGNORE_KEYWORDS = ["Frequência","Aula", "Presença"]
+CREDENTIALS_PATH = 'absolute_path'
 
 
 
@@ -85,36 +85,38 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
 
         dtstart = component.get("DTSTART").dt
         dtend = component.get("DTEND").dt if component.get("DTEND") else dtstart + timedelta(hours=1)
-        
+
+        # Ignora eventos com palavras-chave de ignore
         if should_ignore(summary, IGNORE_KEYWORDS):
             print(f"Ignorado: {summary}")
             continue
 
+        # Se for tarefa
         if should_create_task(summary):
             task_title = summary.replace('[TAREFA] ', '')[:250]
-        task_body = {
-            'title': task_title,
-            'notes': description.replace("\\n", "\n").replace("\\,", ","),
-            'due': dtend.astimezone(timezone.utc).isoformat(timespec='seconds')
-        }
+            task_body = {
+                'title': task_title,
+                'notes': description,
+                'due': dtend.astimezone(timezone.utc).isoformat(timespec='seconds')
+            }
 
-        # Procurar tarefa existente
-        try:
-            tasks_result = tasks_service.tasks().list(tasklist=tasklist_id).execute()
-            tasks = tasks_result.get("items", [])
-            existing_task = next((t for t in tasks if t.get("title") == task_title), None)
+            try:
+                # Listar tarefas existentes
+                tasks_result = tasks_service.tasks().list(tasklist=tasklist_id).execute()
+                tasks = tasks_result.get("items", [])
+                existing_task = next((t for t in tasks if t.get("title", "") == task_title), None)
 
-            if existing_task:
-                tasks_service.tasks().update(tasklist=tasklist_id, task=existing_task['id'], body=task_body).execute()
-                print(f"Tarefa atualizada: {task_title}")
-            else:
-                tasks_service.tasks().insert(tasklist=tasklist_id, body=task_body).execute()
-                print(f"Tarefa criada: {task_title}")
-        except Exception as e:
-            print(f"Erro ao processar tarefa {task_title}: {e}")
+                if existing_task:
+                    tasks_service.tasks().update(tasklist=tasklist_id, task=existing_task['id'], body=task_body).execute()
+                    print(f"Tarefa atualizada: {task_title}")
+                else:
+                    tasks_service.tasks().insert(tasklist=tasklist_id, body=task_body).execute()
+                    print(f"Tarefa criada: {task_title}")
+            except Exception as e:
+                print(f"Erro ao processar tarefa {task_title}: {e}")
 
+        # Caso seja evento normal
         else:
-            # Criar/Atualizar evento no Calendar
             safe_id = uid_to_id(uid)
             event_body = {
                 "id": safe_id,
@@ -123,6 +125,7 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
                 "start": {"dateTime": dtstart.isoformat(), "timeZone": TIMEZONE},
                 "end": {"dateTime": dtend.isoformat(), "timeZone": TIMEZONE},
             }
+
             try:
                 if replace_existing:
                     calendar_service.events().update(calendarId="primary", eventId=safe_id, body=event_body).execute()
