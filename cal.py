@@ -15,11 +15,11 @@ SCOPES = [
     'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/tasks'
 ]
-ICS_URL = "https://moodle.ggte.unicamp.br/calendar/export_execute.php?userid=117227&authtoken=232ada9dbb9e0cc90ddfec2df033bfa25098e439&preset_what=all&preset_time=custom"
+ICS_URL = "url"
 TIMEZONE = "America/Sao_Paulo"
 TAKS_KEYWORDS = ["Exercícios", "Exercício", "Entrega", "Oficina", "Tarefa", "Tarefas", "Atividade"]
 IGNORE_KEYWORDS = ["Frequência","Aula", "Presença"]
-CREDENTIALS_PATH = '/home/otbox/Documentos/Projetos/tmp/CalendarP/credentials.json'
+CREDENTIALS_PATH = 'path'
 
 
 # ================= FUNÇÕES =================
