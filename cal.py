@@ -7,7 +7,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from zoneinfo import ZoneInfo # <-- ADICIONADO
+from zoneinfo import ZoneInfo
 
 
 # ================= CONFIGURAÇÃO =================
@@ -70,14 +70,11 @@ def should_ignore(title: str, ignore_list: list[str]) -> bool:
     return any(word.lower() in title_lower for word in ignore_list)
 
 
-# ... (outras funções do seu script permanecem iguais) ...
-
 def process_events(calendar_service, tasks_service, ical_data, replace_existing=True):
     cal = Calendar.from_ical(ical_data)
     tasklist_id = '@default'
     local_tz = ZoneInfo(TIMEZONE)
 
-    # --- CORREÇÃO: BUSCAR TODAS AS TAREFAS USANDO PAGINAÇÃO ---
     print("Buscando a lista completa de tarefas existentes...")
     all_tasks = []
     page_token = None
@@ -86,20 +83,16 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
             tasks_result = tasks_service.tasks().list(
                 tasklist=tasklist_id,
                 showHidden=True,
-                maxResults=100,  # Máximo permitido por página
+                maxResults=100,
                 pageToken=page_token
             ).execute()
-
-            items = tasks_result.get("items", [])
-            all_tasks.extend(items)
-
+            all_tasks.extend(tasks_result.get("items", []))
             page_token = tasks_result.get("nextPageToken")
             if not page_token:
                 break
         print(f"Encontradas {len(all_tasks)} tarefas no total.")
     except Exception as e:
         print(f"ERRO CRÍTICO ao buscar lista de tarefas: {e}")
-        # Se não puder buscar as tarefas, é mais seguro parar para não criar duplicatas.
         return
 
     for component in cal.walk():
@@ -113,52 +106,52 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
         dtstart_raw = component.get("DTSTART").dt
         dtend_raw = component.get("DTEND").dt if component.get("DTEND") else dtstart_raw + timedelta(hours=1)
 
-        def get_timezone_aware_datetime(dt_object):
-            if isinstance(dt_object, date) and not isinstance(dt_object, datetime):
-                return datetime.combine(dt_object, datetime.max.time()).replace(microsecond=0, tzinfo=local_tz)
-            if dt_object.tzinfo is None:
-                return dt_object.replace(tzinfo=local_tz)
-            return dt_object.astimezone(local_tz)
+        # Converte a data/hora original para o fuso horário local do usuário
+        dtstart_local = dtstart_raw.astimezone(local_tz)
+        dtend_local = dtend_raw.astimezone(local_tz)
         
-        dtstart = get_timezone_aware_datetime(dtstart_raw)
-        dtend = get_timezone_aware_datetime(dtend_raw)
-
         if should_ignore(summary, IGNORE_KEYWORDS):
             continue
 
         if should_create_task(summary):
             ics_uid_tag = f"ics_uid:{uid}"
-            due_time_str = dtend.strftime('%H:%M')
+            
+            # O horário exibido no título vem da data/hora local correta
+            due_time_str = dtend_local.strftime('%H:%M')
             original_title = summary.replace('[TAREFA] ', '')
             task_title = f"[{due_time_str}] {original_title}"
             
-            due_utc = dtend.astimezone(timezone.utc)
-            due_utc_iso_string = due_utc.strftime('%Y-%m-%dT%H:%M:%S') + '.000Z'
+            # CORREÇÃO PRINCIPAL: Usar apenas a data local, sem conversão para UTC
+            # O Google Tasks interpreta 'due' como data apenas, não data/hora
+            due_date_local = dtend_local.date()
+            due_date_string = due_date_local.isoformat() + "T00:00:00.000Z"
             
+            print(f"DEBUG - Data original: {dtend_raw}")
+            print(f"DEBUG - Data local: {dtend_local}")
+            print(f"DEBUG - Data para task: {due_date_string}")
+            print(f"DEBUG - Data final task: {due_date_local}")
+
             task_notes = f"{description}\n\n{ics_uid_tag}"
-            task_body = {'title': task_title, 'notes': task_notes, 'due': due_utc_iso_string}
+            task_body = {'title': task_title, 'notes': task_notes, 'due': due_date_string}
 
             try:
-                # A busca agora é feita na lista completa de tarefas
                 existing_task = next((t for t in all_tasks if ics_uid_tag in t.get("notes", "")), None)
 
                 if existing_task:
-                    # Se encontrou, ATUALIZA
                     tasks_service.tasks().update(tasklist=tasklist_id, task=existing_task['id'], body=task_body).execute()
-                    print(f"Tarefa ATUALIZADA: {task_title}")
+                    print(f"Tarefa ATUALIZADA: {task_title} (Venc: {due_date_local.strftime('%d/%m/%Y')})")
                 else:
-                    # Se não encontrou, CRIA
                     tasks_service.tasks().insert(tasklist=tasklist_id, body=task_body).execute()
-                    print(f"Tarefa CRIADA: {task_title}")
+                    print(f"Tarefa CRIADA: {task_title} (Venc: {due_date_local.strftime('%d/%m/%Y')})")
             except Exception as e:
                 print(f"ERRO ao processar tarefa {task_title}: {e}")
         else:
-            # Lógica para eventos da agenda (continua igual)
+            # Eventos do Google Agenda usam a data/hora completa e já funcionavam corretamente
             safe_id = uid_to_id(uid)
             event_body = {
                 "id": safe_id, "summary": summary, "description": description,
-                "start": {"dateTime": dtstart.isoformat(), "timeZone": TIMEZONE},
-                "end": {"dateTime": dtend.isoformat(), "timeZone": TIMEZONE},
+                "start": {"dateTime": dtstart_local.isoformat(), "timeZone": TIMEZONE},
+                "end": {"dateTime": dtend_local.isoformat(), "timeZone": TIMEZONE},
             }
             try:
                 calendar_service.events().get(calendarId="primary", eventId=safe_id).execute()
@@ -208,5 +201,4 @@ if __name__ == '__main__':
     process_events(calendar_service, tasks_service, ical_text)
     # Para apagar tudo, descomente a linha abaixo:
     # for x in range(0,2):
-    #     clear_all(calendar_service, tasks_service)
-    
+    #     clear_all(calendar_service, tasks_service) 
