@@ -15,7 +15,7 @@ SCOPES = [
     'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/tasks'
 ]
-ICS_URL = "url"
+ICS_URL = os.environ.get("ICS_URL")
 TIMEZONE = "America/Sao_Paulo"
 TAKS_KEYWORDS = ["Exercícios", "Exercício", "Entrega", "Oficina", "Tarefa", "Tarefas", "Atividade"]
 IGNORE_KEYWORDS = ["Frequência","Aula", "Presença"]
