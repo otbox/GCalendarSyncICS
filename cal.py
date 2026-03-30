@@ -20,6 +20,9 @@ TIMEZONE = "America/Sao_Paulo"
 TAKS_KEYWORDS = ["Exercícios", "Exercício", "Entrega", "Oficina", "Tarefa", "Tarefas", "Atividade"]
 IGNORE_KEYWORDS = ["Frequência","Aula", "Presença"]
 CREDENTIALS_PATH = 'path'
+GREEN_API_INSTANCE = os.environ.get("GREEN_API_INSTANCE")
+GREEN_API_TOKEN = os.environ.get("GREEN_API_TOKEN")
+GREEN_API_CHAT = os.environ.get("GREEN_API_CHAT")  # ex: 5511999999999@c.us
 
 if not GREEN_API_INSTANCE or not GREEN_API_TOKEN or not GREEN_API_CHAT:
     raise Exception("Configuração da Green API incompleta")
