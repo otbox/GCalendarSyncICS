@@ -48,6 +48,8 @@ def uid_to_id(uid):
     return hashlib.sha256(uid.encode('utf-8')).hexdigest()[:32]
 
 def authenticate():
+    
+    print("GOOGLE_TOKEN exists:", bool(os.environ.get("GOOGLE_TOKEN")))
     creds = None
 
     # PRIORIDADE: usar secret do GitHub
