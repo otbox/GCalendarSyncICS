@@ -22,7 +22,11 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Rodar script
-        env:
-          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
-          ICS_URL: ${{ secrets.ICS_URL }}
+      env:
+        GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
+        ICS_URL: ${{ secrets.ICS_URL }}
+        GREEN_API_INSTANCE: ${{ secrets.GREEN_API_INSTANCE }}
+        GREEN_API_TOKEN: ${{ secrets.GREEN_API_TOKEN }}
+        GREEN_API_CHAT: ${{ secrets.GREEN_API_CHAT }}
+          
         run: python cal.py
