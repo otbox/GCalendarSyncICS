@@ -49,17 +49,25 @@ def uid_to_id(uid):
 
 def authenticate():
     creds = None
-    creas = load_token()
+
+    # PRIORIDADE: usar secret do GitHub
+    token_str = os.environ.get("GOOGLE_TOKEN")
+
+    if token_str:
+        creds = Credentials.from_authorized_user_info(
+            json.loads(token_str),
+            SCOPES
+        )
+    elif os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+
+    # se não tiver credenciais válidas → falha explícita
     if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            # CORRIGIDO: Utilizando a variável CREDENTIALS_PATH
-            flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-            with open('token.json', 'w') as token:
-                token.write(creds.to_json())
+        raise Exception("Credenciais inválidas. Gere o token.json localmente e adicione ao GitHub Secrets.")
+
     calendar_service = build('calendar', 'v3', credentials=creds)
     tasks_service = build('tasks', 'v1', credentials=creds)
+
     return calendar_service, tasks_service
 
 def load_ics(url):
