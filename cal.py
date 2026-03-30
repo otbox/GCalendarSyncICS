@@ -73,14 +73,19 @@ def authenticate():
     return calendar_service, tasks_service
 
 def load_ics(url):
+    if not url:
+        raise Exception("ICS_URL inválida ou não definida")
+
     if url.startswith("http"):
         resp = requests.get(url)
         resp.raise_for_status()
         return resp.text
     else:
+        if not os.path.exists(url):
+            raise Exception(f"Arquivo ICS não encontrado: {url}")
         with open(url, "r", encoding="utf-8") as f:
             return f.read()
-
+            
 def should_ignore(title: str, ignore_list: list[str]) -> bool:
     title_lower = title.lower()
     return any(word.lower() in title_lower for word in ignore_list)
@@ -211,6 +216,8 @@ def clear_all(calendar_service, tasks_service, calendar_id="primary", tasklist_i
 
 # ================= EXECUÇÃO =================
 if __name__ == '__main__':
+    if not ICS_URL:
+        raise Exception("ICS_URL não definida no environment")
     calendar_service, tasks_service = authenticate()
     ical_text = load_ics(ICS_URL)
 
