@@ -21,7 +21,11 @@ TAKS_KEYWORDS = ["Exercícios", "Exercício", "Entrega", "Oficina", "Tarefa", "T
 IGNORE_KEYWORDS = ["Frequência","Aula", "Presença"]
 CREDENTIALS_PATH = 'path'
 
-
+if not GREEN_API_INSTANCE or not GREEN_API_TOKEN or not GREEN_API_CHAT:
+    raise Exception("Configuração da Green API incompleta")
+    
+if not ICS_URL:
+    raise Exception("ICS_URL não definida no environment")
 def load_token():
     token_str = os.environ.get("GOOGLE_TOKEN")
     if token_str:
@@ -31,6 +35,18 @@ def load_token():
     return None
 
 # ================= FUNÇÕES =================
+
+def send_whatsapp_message(text: str):
+    url = f"https://api.green-api.com/waInstance{GREEN_API_INSTANCE}/sendMessage/{GREEN_API_TOKEN}"
+    payload = {
+        "chatId": GREEN_API_CHAT,
+        "message": text
+    }
+    try:
+        resp = requests.post(url, json=payload)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"Erro ao enviar mensagem WhatsApp: {e}")
 
 def should_create_task(summary: str) -> bool:
     summary_upper = summary.upper()
@@ -161,9 +177,11 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
                 if existing_task:
                     tasks_service.tasks().update(tasklist=tasklist_id, task=existing_task['id'], body=task_body).execute()
                     print(f"Tarefa ATUALIZADA: {task_title} (Venc: {due_date_local.strftime('%d/%m/%Y')})")
+                    send_whatsapp_message(f"Tarefa atualizada:\n{task_title}\nVencimento: {due_date_local}")
                 else:
                     tasks_service.tasks().insert(tasklist=tasklist_id, body=task_body).execute()
                     print(f"Tarefa CRIADA: {task_title} (Venc: {due_date_local.strftime('%d/%m/%Y')})")
+                    send_whatsapp_message(f"Nova tarefa:\n{task_title}\nVencimento: {due_date_local}")
             except Exception as e:
                 print(f"ERRO ao processar tarefa {task_title}: {e}")
         else:
@@ -174,6 +192,7 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
                 "start": {"dateTime": dtstart_local.isoformat(), "timeZone": TIMEZONE},
                 "end": {"dateTime": dtend_local.isoformat(), "timeZone": TIMEZONE},
             }
+            send_whatsapp_message(f"Novo evento:\n{summary}\nInício: {dtstart_local.strftime('%d/%m %H:%M')}\nFim: {dtend_local.strftime('%d/%m %H:%M')}")
             try:
                 calendar_service.events().get(calendarId="primary", eventId=safe_id).execute()
                 calendar_service.events().update(calendarId="primary", eventId=safe_id, body=event_body).execute()
@@ -216,8 +235,6 @@ def clear_all(calendar_service, tasks_service, calendar_id="primary", tasklist_i
 
 # ================= EXECUÇÃO =================
 if __name__ == '__main__':
-    if not ICS_URL:
-        raise Exception("ICS_URL não definida no environment")
     calendar_service, tasks_service = authenticate()
     ical_text = load_ics(ICS_URL)
 
