@@ -8,7 +8,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from zoneinfo import ZoneInfo
-
+import json
 
 # ================= CONFIGURAÇÃO =================
 SCOPES = [
@@ -21,6 +21,14 @@ TAKS_KEYWORDS = ["Exercícios", "Exercício", "Entrega", "Oficina", "Tarefa", "T
 IGNORE_KEYWORDS = ["Frequência","Aula", "Presença"]
 CREDENTIALS_PATH = 'path'
 
+
+def load_token():
+    token_str = os.environ.get("GOOGLE_TOKEN")
+    if token_str:
+        return Credentials.from_authorized_user_info(json.loads(token_str), SCOPES)
+    elif os.path.exists('token.json'):
+        return Credentials.from_authorized_user_file('token.json', SCOPES)
+    return None
 
 # ================= FUNÇÕES =================
 
@@ -41,15 +49,13 @@ def uid_to_id(uid):
 
 def authenticate():
     creds = None
-    if os.path.exists('token.json'):
-        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    creas = load_token()
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
             # CORRIGIDO: Utilizando a variável CREDENTIALS_PATH
             flow = InstalledAppFlow.from_client_secrets_file(CREDENTIALS_PATH, SCOPES)
-            creds = flow.run_local_server(port=0)
             with open('token.json', 'w') as token:
                 token.write(creds.to_json())
     calendar_service = build('calendar', 'v3', credentials=creds)
