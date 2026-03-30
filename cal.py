@@ -187,7 +187,6 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
 
             task_notes = f"{description}\\n\\n{ics_uid_tag}"
             task_body = {
-                'id': existing_task["id"], 
                 'title': task_title,
                 'notes': task_notes,
                 'due': due_date_string
@@ -207,6 +206,7 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
 
                 if existing_task and existing_task.get("id"):
                     try:
+                        task_body["id"] = existing_task["id"]
                         tasks_service.tasks().update(
                             tasklist=tasklist_id,
                             task=existing_task["id"],
