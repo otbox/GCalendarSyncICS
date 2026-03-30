@@ -187,6 +187,7 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
 
             task_notes = f"{description}\\n\\n{ics_uid_tag}"
             task_body = {
+                'id': existing_task["id"], 
                 'title': task_title,
                 'notes': task_notes,
                 'due': due_date_string
