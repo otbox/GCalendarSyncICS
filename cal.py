@@ -156,67 +156,116 @@ def process_events(calendar_service, tasks_service, ical_data, replace_existing=
 
         uid = str(component.get("UID"))
         summary = str(component.get("SUMMARY", "Sem título"))
-        description = str(component.get("DESCRIPTION", "")).replace("\\n", "\n").replace("\\,", ",")
-        
+        description = str(component.get("DESCRIPTION", "")).replace("\\\\n", "\\n").replace("\\\\,", ",")
+
         dtstart_raw = component.get("DTSTART").dt
         dtend_raw = component.get("DTEND").dt if component.get("DTEND") else dtstart_raw + timedelta(hours=1)
 
         # Converte a data/hora original para o fuso horário local do usuário
         dtstart_local = dtstart_raw.astimezone(local_tz)
         dtend_local = dtend_raw.astimezone(local_tz)
-        
+
         if should_ignore(summary, IGNORE_KEYWORDS):
             continue
 
         if should_create_task(summary):
             ics_uid_tag = f"ics_uid:{uid}"
-            
-            # O horário exibido no título vem da data/hora local correta
+
+            # Horário no título vem da data/hora local
             due_time_str = dtend_local.strftime('%H:%M')
             original_title = summary.replace('[TAREFA] ', '')
             task_title = f"[{due_time_str}] {original_title}"
-            
-            # CORREÇÃO PRINCIPAL: Usar apenas a data local, sem conversão para UTC
-            # O Google Tasks interpreta 'due' como data apenas, não data/hora
+
+            # Google Tasks: usar apenas a data local, horário é ignorado
             due_date_local = dtend_local.date()
             due_date_string = due_date_local.isoformat() + "T00:00:00.000Z"
-            
+
             print(f"DEBUG - Data original: {dtend_raw}")
             print(f"DEBUG - Data local: {dtend_local}")
             print(f"DEBUG - Data para task: {due_date_string}")
             print(f"DEBUG - Data final task: {due_date_local}")
 
-            task_notes = f"{description}\n\n{ics_uid_tag}"
-            task_body = {'title': task_title, 'notes': task_notes, 'due': due_date_string}
+            task_notes = f"{description}\\n\\n{ics_uid_tag}"
+            task_body = {
+                'title': task_title,
+                'notes': task_notes,
+                'due': due_date_string
+            }
 
             try:
-                existing_task = next((t for t in all_tasks if ics_uid_tag in t.get("notes", "")), None)
+                # Garante que a tarefa tem notes contendo o UID e um id válido
+                existing_task = next(
+                    (
+                        t for t in all_tasks
+                        if t.get("notes")
+                        and ics_uid_tag in t["notes"]
+                        and t.get("id")
+                    ),
+                    None
+                )
 
-                if existing_task:
-                    tasks_service.tasks().update(tasklist=tasklist_id, task=existing_task['id'], body=task_body).execute()
-                    print(f"Tarefa ATUALIZADA: {task_title} (Venc: {due_date_local.strftime('%d/%m/%Y')})")
-                    send_whatsapp_message(f"Tarefa atualizada:\n{task_title}\nVencimento: {due_date_local}")
+                if existing_task and existing_task.get("id"):
+                    try:
+                        tasks_service.tasks().update(
+                            tasklist=tasklist_id,
+                            task=existing_task["id"],
+                            body=task_body
+                        ).execute()
+                        print(f"Tarefa ATUALIZADA: {task_title} (Venc: {due_date_local.strftime('%d/%m/%Y')})")
+                        send_whatsapp_message(
+                            f"Tarefa atualizada:\n{task_title}\nVencimento: {due_date_local}"
+                        )
+                    except Exception as e:
+                        print(f"ERRO ao atualizar tarefa {task_title}: {e}")
                 else:
-                    tasks_service.tasks().insert(tasklist=tasklist_id, body=task_body).execute()
-                    print(f"Tarefa CRIADA: {task_title} (Venc: {due_date_local.strftime('%d/%m/%Y')})")
-                    send_whatsapp_message(f"Nova tarefa:\n{task_title}\nVencimento: {due_date_local}")
+                    try:
+                        tasks_service.tasks().insert(
+                            tasklist=tasklist_id,
+                            body=task_body
+                        ).execute()
+                        print(f"Tarefa CRIADA: {task_title} (Venc: {due_date_local.strftime('%d/%m/%Y')})")
+                        send_whatsapp_message(
+                            f"Nova tarefa:\n{task_title}\nVencimento: {due_date_local}"
+                        )
+                    except Exception as e:
+                        print(f"ERRO ao criar tarefa {task_title}: {e}")
             except Exception as e:
                 print(f"ERRO ao processar tarefa {task_title}: {e}")
         else:
-            # Eventos do Google Agenda usam a data/hora completa e já funcionavam corretamente
+            # Eventos do Google Agenda usam a data/hora completa
             safe_id = uid_to_id(uid)
             event_body = {
-                "id": safe_id, "summary": summary, "description": description,
-                "start": {"dateTime": dtstart_local.isoformat(), "timeZone": TIMEZONE},
-                "end": {"dateTime": dtend_local.isoformat(), "timeZone": TIMEZONE},
+                "id": safe_id,
+                "summary": summary,
+                "description": description,
+                "start": {
+                    "dateTime": dtstart_local.isoformat(),
+                    "timeZone": TIMEZONE
+                },
+                "end": {
+                    "dateTime": dtend_local.isoformat(),
+                    "timeZone": TIMEZONE
+                },
             }
-            send_whatsapp_message(f"Novo evento:\n{summary}\nInício: {dtstart_local.strftime('%d/%m %H:%M')}\nFim: {dtend_local.strftime('%d/%m %H:%M')}")
+            send_whatsapp_message(
+                f"Novo evento:\n{summary}\nInício: {dtstart_local.strftime('%d/%m %H:%M')}\nFim: {dtend_local.strftime('%d/%m %H:%M')}"
+            )
             try:
-                calendar_service.events().get(calendarId="primary", eventId=safe_id).execute()
-                calendar_service.events().update(calendarId="primary", eventId=safe_id, body=event_body).execute()
+                calendar_service.events().get(
+                    calendarId="primary",
+                    eventId=safe_id
+                ).execute()
+                calendar_service.events().update(
+                    calendarId="primary",
+                    eventId=safe_id,
+                    body=event_body
+                ).execute()
             except:
                 try:
-                    calendar_service.events().insert(calendarId="primary", body=event_body).execute()
+                    calendar_service.events().insert(
+                        calendarId="primary",
+                        body=event_body
+                    ).execute()
                 except Exception as e:
                     print(f"Erro ao criar/atualizar evento {summary}: {e}")
 
