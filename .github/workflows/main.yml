@@ -1,0 +1,25 @@
+name: Run Calendar Script Daily
+
+on:
+  schedule:
+    - cron: '0 1 * * *' # todo dia às 01:00 UTC (23h no Brasil)
+  workflow_dispatch: # permite rodar manualmente
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clonar repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: Rodar script
+        run: python cal.py
