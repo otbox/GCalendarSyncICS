@@ -72,6 +72,10 @@ def authenticate():
     creds = None
 
     # PRIORIDADE: usar secret do GitHub
+def authenticate():
+    print("GOOGLE_TOKEN exists:", bool(os.environ.get("GOOGLE_TOKEN")))
+
+    creds = None
     token_str = os.environ.get("GOOGLE_TOKEN")
 
     if token_str:
@@ -82,9 +86,20 @@ def authenticate():
     elif os.path.exists("token.json"):
         creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
-    # se não tiver credenciais válidas → falha explícita
-    if not creds or not creds.valid:
-        raise Exception("Credenciais inválidas. Gere o token.json localmente e adicione ao GitHub Secrets.")
+    if not creds:
+        raise Exception("Credenciais não encontradas")
+
+    # 🔥 CORREÇÃO PRINCIPAL: refresh automático
+    if creds.expired and creds.refresh_token:
+        print("Token expirado, tentando refresh...")
+        try:
+            creds.refresh(Request())
+            print("Token renovado com sucesso")
+        except Exception as e:
+            raise Exception(f"Erro ao renovar token: {e}")
+
+    if not creds.valid:
+        raise Exception("Credenciais inválidas mesmo após refresh")
 
     calendar_service = build('calendar', 'v3', credentials=creds)
     tasks_service = build('tasks', 'v1', credentials=creds)
